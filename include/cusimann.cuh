@@ -39,7 +39,7 @@
 #include <stdlib.h>
 #include <cuda.h>
 #include <curand_kernel.h>
-#include <cutil_inline.h>
+#include <helper_cuda.h>
 #include <math.h>
 #include <time.h>
 
@@ -157,16 +157,16 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 	real T;
 
 	size_t sizeFD = n * sizeof(real);
-	cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_n", &n, sizeof(n)));
-	cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_N", &N, sizeof(N)));
-	cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_LB", lb, sizeFD));
-	cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_UB", ub, sizeFD));
+	checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_n, &n, sizeof(n)));
+	checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_N, &N, sizeof(N)));
+	checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_LB, lb, sizeFD));
+	checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_UB, ub, sizeFD));
 	
 	const unsigned int NThreads = n_threads_per_block * n_blocks; //total number of threads
 
 	real *d_points; real *d_f_points;
-	cutilSafeCall(cudaMalloc((void**)&d_points, NThreads*n*sizeof(real)));
-	cutilSafeCall(cudaMalloc((void**)&d_f_points, NThreads*sizeof(real)));
+	checkCudaErrors(cudaMalloc((void**)&d_points, NThreads*n*sizeof(real)));
+	checkCudaErrors(cudaMalloc((void**)&d_f_points, NThreads*sizeof(real)));
 
 	unsigned int pos_min_d_f_points=0; 
 	
@@ -179,17 +179,17 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 		h_deltas[c] = (ub[c]-lb[c])/(root-1);
 	
 	real *d_deltas;
-	cutilSafeCall( cudaMalloc( (void**)&d_deltas, n*sizeof(real) ) );
-	cutilSafeCall( cudaMemcpy(d_deltas, h_deltas, n*sizeof(real), cudaMemcpyHostToDevice ) );
+	checkCudaErrors( cudaMalloc( (void**)&d_deltas, n*sizeof(real) ) );
+	checkCudaErrors( cudaMemcpy(d_deltas, h_deltas, n*sizeof(real), cudaMemcpyHostToDevice ) );
 	
 	cusimann_generateStartPoints<<<n_blocks,n_threads_per_block>>>(d_points, root, d_deltas);
-	cutilSafeCall( cudaFree(d_deltas) );
+	checkCudaErrors( cudaFree(d_deltas) );
 	free(h_deltas);
 	//end: generate start points
 	
 	//begin: random number generator initialization
 	curandState *devStates;
-	cutilSafeCall( cudaMalloc((void**)&devStates, NThreads*sizeof(curandState)) );
+	checkCudaErrors( cudaMalloc((void**)&devStates, NThreads*sizeof(curandState)) );
 
 	setup_kernel<<<n_blocks,n_threads_per_block>>>(devStates, time(NULL));
 	//end: random number generator initialization
@@ -206,8 +206,8 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 
 	pos_min_d_f_points = thrust::min_element(dt_f_points, dt_f_points + NThreads) - dt_f_points;
 
-	cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_BEST_POINT",&(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]),n*sizeof(real),0,cudaMemcpyDeviceToDevice) );
-	cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_F_BEST_POINT",&(d_f_points[pos_min_d_f_points]),sizeof(real),0,cudaMemcpyDeviceToDevice) );
+	checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_BEST_POINT,&(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]),n*sizeof(real),0,cudaMemcpyDeviceToDevice) );
+	checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_F_BEST_POINT,&(d_f_points[pos_min_d_f_points]),sizeof(real),0,cudaMemcpyDeviceToDevice) );
 
 	T *= rho;
 	// end first time
@@ -219,8 +219,8 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 
 		pos_min_d_f_points = thrust::min_element(dt_f_points, dt_f_points + NThreads) - dt_f_points;
 
-		cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_BEST_POINT",&(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]),n*sizeof(real),0,cudaMemcpyDeviceToDevice) );
-		cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_F_BEST_POINT",&(d_f_points[pos_min_d_f_points]),sizeof(real),0,cudaMemcpyDeviceToDevice) );
+		checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_BEST_POINT,&(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]),n*sizeof(real),0,cudaMemcpyDeviceToDevice) );
+		checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_F_BEST_POINT,&(d_f_points[pos_min_d_f_points]),sizeof(real),0,cudaMemcpyDeviceToDevice) );
 
 		T *= rho;
 	} while(T>T_min);
@@ -228,15 +228,15 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 
 	//end: sa
 
-	cutilSafeCall(cudaMemcpy(cusimann_minimum, &(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]), n*sizeof(real), cudaMemcpyDeviceToHost ));
+	checkCudaErrors(cudaMemcpy(cusimann_minimum, &(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]), n*sizeof(real), cudaMemcpyDeviceToHost ));
 
-	cutilSafeCall(cudaMemcpy(f_cusimann_minimum, &(d_f_points[pos_min_d_f_points]), sizeof(real), cudaMemcpyDeviceToHost ));
+	checkCudaErrors(cudaMemcpy(f_cusimann_minimum, &(d_f_points[pos_min_d_f_points]), sizeof(real), cudaMemcpyDeviceToHost ));
 
 	//begin: CLEAN UP
-	cutilSafeCall(cudaFree(d_points));
-	cutilSafeCall(cudaFree(d_f_points));
-	cutilSafeCall(cudaFree(devStates));
-	//cutilSafeCall(cudaDeviceReset());
+	checkCudaErrors(cudaFree(d_points));
+	checkCudaErrors(cudaFree(d_f_points));
+	checkCudaErrors(cudaFree(devStates));
+	//checkCudaErrors(cudaDeviceReset());
 	//end: CLEAN UP
 	return 1;
 }
@@ -295,32 +295,32 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 		unsigned int cpu_thread_id = omp_get_thread_num();
 		unsigned int num_cpu_threads = omp_get_num_threads();
 
-		cutilSafeCall(cudaSetDevice(cpu_thread_id));
+		checkCudaErrors(cudaSetDevice(cpu_thread_id));
 
 		int gpu_id = -1;
-		cutilSafeCall(cudaGetDevice(&gpu_id));
+		checkCudaErrors(cudaGetDevice(&gpu_id));
 		printf("CPU thread %d (of %d) uses CUDA device %d\n", cpu_thread_id, num_cpu_threads, gpu_id);
 
-		cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_n", &n, sizeof(n)));
-		cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_N", &N, sizeof(N)));
-		cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_LB", lb, sizeFD));
-		cutilSafeCall(cudaMemcpyToSymbol("CUSIMANN_UB", ub, sizeFD));
+		checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_n, &n, sizeof(n)));
+		checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_N, &N, sizeof(N)));
+		checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_LB, lb, sizeFD));
+		checkCudaErrors(cudaMemcpyToSymbol(CUSIMANN_UB, ub, sizeFD));
 
 		real *d_points; real *d_f_points;
-		cutilSafeCall(cudaMalloc((void**)&d_points, NThreads*n*sizeof(real)));
-		cutilSafeCall(cudaMalloc((void**)&d_f_points, NThreads*sizeof(real)));
+		checkCudaErrors(cudaMalloc((void**)&d_points, NThreads*n*sizeof(real)));
+		checkCudaErrors(cudaMalloc((void**)&d_f_points, NThreads*sizeof(real)));
 
 		real *d_deltas;
-		cutilSafeCall( cudaMalloc( (void**)&d_deltas, n*sizeof(real) ) );
-		cutilSafeCall( cudaMemcpy(d_deltas, h_deltas, n*sizeof(real), cudaMemcpyHostToDevice ) );
+		checkCudaErrors( cudaMalloc( (void**)&d_deltas, n*sizeof(real) ) );
+		checkCudaErrors( cudaMemcpy(d_deltas, h_deltas, n*sizeof(real), cudaMemcpyHostToDevice ) );
 		
 		cusimann_generateStartPoints<<<n_blocks,n_threads_per_block>>>(d_points, root, d_deltas);
-		cutilSafeCall( cudaFree(d_deltas) );
+		checkCudaErrors( cudaFree(d_deltas) );
 
 	
 		//begin: random number generator initialization
 		curandState *devStates;
-		cutilSafeCall( cudaMalloc((void**)&devStates, NThreads*sizeof(curandState)) );
+		checkCudaErrors( cudaMalloc((void**)&devStates, NThreads*sizeof(curandState)) );
 
 		setup_kernel<<<n_blocks,n_threads_per_block>>>(devStates, cpu_thread_id+time(NULL));
 		//end: random number generator initialization
@@ -339,8 +339,8 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 
 
 		pos_min_d_f_points = thrust::min_element(dt_f_points, dt_f_points + NThreads) - dt_f_points;
-		cutilSafeCall(cudaMemcpy(&(h_best_points[pos2Dto1D(cpu_thread_id,0,n)]), &(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]), n*sizeof(real), cudaMemcpyDeviceToHost ));
-		cutilSafeCall(cudaMemcpy(&(h_f_best_points[cpu_thread_id]), &(d_f_points[pos_min_d_f_points]), sizeof(real), cudaMemcpyDeviceToHost ));
+		checkCudaErrors(cudaMemcpy(&(h_best_points[pos2Dto1D(cpu_thread_id,0,n)]), &(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]), n*sizeof(real), cudaMemcpyDeviceToHost ));
+		checkCudaErrors(cudaMemcpy(&(h_f_best_points[cpu_thread_id]), &(d_f_points[pos_min_d_f_points]), sizeof(real), cudaMemcpyDeviceToHost ));
 
 		#pragma omp barrier
 		//begin: reduce multigpu
@@ -349,8 +349,8 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 		#pragma omp barrier
 		//end: reduce multigpu
 
-		cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_BEST_POINT",&(h_best_points[pos2Dto1D(pos_minimum_f_best_points,0,n)]),n*sizeof(real)) );
-		cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_F_BEST_POINT",&(h_f_best_points[pos_minimum_f_best_points]),sizeof(real) ) );
+		checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_BEST_POINT,&(h_best_points[pos2Dto1D(pos_minimum_f_best_points,0,n)]),n*sizeof(real)) );
+		checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_F_BEST_POINT,&(h_f_best_points[pos_minimum_f_best_points]),sizeof(real) ) );
 
 		#pragma omp barrier
 
@@ -365,8 +365,8 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 			pos_min_d_f_points = thrust::min_element(dt_f_points, dt_f_points + NThreads) - dt_f_points;
 
 
-			cutilSafeCall(cudaMemcpy(&(h_best_points[pos2Dto1D(cpu_thread_id,0,n)]), &(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]), n*sizeof(real), cudaMemcpyDeviceToHost ));
-			cutilSafeCall(cudaMemcpy(&(h_f_best_points[cpu_thread_id]), &(d_f_points[pos_min_d_f_points]), sizeof(real), cudaMemcpyDeviceToHost ));
+			checkCudaErrors(cudaMemcpy(&(h_best_points[pos2Dto1D(cpu_thread_id,0,n)]), &(d_points[pos2Dto1D(pos_min_d_f_points,0,n)]), n*sizeof(real), cudaMemcpyDeviceToHost ));
+			checkCudaErrors(cudaMemcpy(&(h_f_best_points[cpu_thread_id]), &(d_f_points[pos_min_d_f_points]), sizeof(real), cudaMemcpyDeviceToHost ));
 
 			#pragma omp barrier
 			//begin: reduce multigpu
@@ -375,8 +375,8 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 			#pragma omp barrier
 			//end: reduce multigpu
 
-			cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_BEST_POINT",&(h_best_points[pos2Dto1D(pos_minimum_f_best_points,0,n)]),n*sizeof(real)) );
-			cutilSafeCall( cudaMemcpyToSymbol("CUSIMANN_F_BEST_POINT",&(h_f_best_points[pos_minimum_f_best_points]),sizeof(real) ) );
+			checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_BEST_POINT,&(h_best_points[pos2Dto1D(pos_minimum_f_best_points,0,n)]),n*sizeof(real)) );
+			checkCudaErrors( cudaMemcpyToSymbol(CUSIMANN_F_BEST_POINT,&(h_f_best_points[pos_minimum_f_best_points]),sizeof(real) ) );
 			#pragma omp barrier
 			T *= rho;
 
@@ -386,11 +386,11 @@ int cusimann_optimize(unsigned int n_threads_per_block, unsigned int n_blocks, r
 		//end: sa
 
 		//begin: CLEAN UP
-		cutilSafeCall(cudaFree(d_points));
-		cutilSafeCall(cudaFree(d_f_points));
-		cutilSafeCall(cudaFree(devStates));
+		checkCudaErrors(cudaFree(d_points));
+		checkCudaErrors(cudaFree(d_f_points));
+		checkCudaErrors(cudaFree(devStates));
 
-		//cutilSafeCall(cudaDeviceReset());
+		//checkCudaErrors(cudaDeviceReset());
 		//end: CLEAN UP
 	}
 
